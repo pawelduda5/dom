@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>GPS Geofencing</title>
+<title>GPS PRO Geofencing</title>
 
 <style>
 
@@ -27,53 +27,31 @@ body{
 
 .container{
     width:100%;
-    max-width:700px;
-    text-align:center;
-}
-
-h1{
-    margin-bottom:30px;
-    font-size:42px;
+    max-width:750px;
 }
 
 .card{
     background:#1e293b;
-    padding:30px;
     border-radius:25px;
+    padding:30px;
     box-shadow:0 0 30px rgba(0,0,0,0.3);
+    text-align:center;
 }
 
-.status{
-    margin-top:20px;
-    font-size:22px;
-}
-
-.coords{
-    margin-top:20px;
-    opacity:0.8;
-    line-height:1.8;
-    font-size:15px;
-}
-
-.zoneInfo{
-    margin-top:20px;
-    background:#0f172a;
-    padding:15px;
-    border-radius:15px;
-    text-align:left;
-    font-size:14px;
-    line-height:1.7;
+h1{
+    margin-bottom:25px;
+    font-size:42px;
 }
 
 .logo{
-    width:240px;
-    margin-top:30px;
+    width:260px;
     border-radius:20px;
+    margin-top:25px;
 
     opacity:0;
-    transform:scale(0.8);
+    transform:scale(0.9);
 
-    transition:0.7s;
+    transition:0.6s;
 }
 
 .logo.show{
@@ -83,16 +61,37 @@ h1{
 
 .message{
     margin-top:25px;
-    font-size:32px;
+    font-size:34px;
 }
 
-.accuracy{
-    margin-top:10px;
+.coords{
+    margin-top:25px;
+    opacity:0.8;
+    line-height:1.8;
+    font-size:15px;
+}
+
+.debug{
+    margin-top:25px;
+    background:#0f172a;
+    border-radius:15px;
+    padding:20px;
+    text-align:left;
+    font-size:14px;
+    line-height:1.7;
+    max-height:300px;
+    overflow:auto;
+}
+
+hr{
+    margin:12px 0;
+    border-color:rgba(255,255,255,0.08);
+}
+
+.status{
+    margin-top:15px;
     color:#22c55e;
-}
-
-.loading{
-    font-size:20px;
+    font-size:18px;
 }
 
 </style>
@@ -102,19 +101,23 @@ h1{
 
 <div class="container">
 
-    <h1>GPS Geofencing</h1>
-
     <div class="card">
 
-        <div id="loading" class="loading">
-            Łączenie z GPS...
-        </div>
+        <h1>GPS PRO</h1>
 
-        <div id="result"></div>
+        <div id="result">
+
+            <div class="message">
+                Łączenie z GPS...
+            </div>
+
+        </div>
 
         <div id="coords" class="coords"></div>
 
-        <div id="zoneInfo" class="zoneInfo"></div>
+        <div id="status" class="status"></div>
+
+        <div id="debug" class="debug"></div>
 
     </div>
 
@@ -122,9 +125,9 @@ h1{
 
 <script>
 
-// ======================================
+// =====================================
 // STREFY
-// ======================================
+// =====================================
 
 const zones = [
 
@@ -132,31 +135,50 @@ const zones = [
         name: "Pralnia",
         lat: 50.6309799,
         lon: 18.8256773,
-        radius: 1, // metry
-        img: "1.jpeg"
+        radius: 10,
+        img: "1.jpg"
     },
 
     {
         name: "Helenka",
         lat: 50.6310118,
         lon: 18.8256646,
-        radius: 1,
-        img: "2.jpeg"
+        radius: 10,
+        img: "2.jpg"
     }
 
 ];
 
 
-// ======================================
-// HISTORIA GPS (stabilizacja)
-// ======================================
+// =====================================
+// USTAWIENIA PRO
+// =====================================
 
-let history = [];
+// ile metrów bliżej musi być nowa strefa
+// żeby przełączyć
+
+const SWITCH_ADVANTAGE = 4;
+
+// ile kolejnych odczytów potrzeba
+// do zmiany strefy
+
+const REQUIRED_CONFIRMATIONS = 3;
 
 
-// ======================================
-// START
-// ======================================
+// =====================================
+// ZMIENNE
+// =====================================
+
+let currentZone = null;
+
+let pendingZone = null;
+
+let pendingCount = 0;
+
+
+// =====================================
+// START GPS
+// =====================================
 
 window.onload = () => {
 
@@ -165,12 +187,12 @@ window.onload = () => {
         alert("GPS nie jest wspierany");
 
         return;
+
     }
 
     navigator.geolocation.watchPosition(
 
         success,
-
         error,
 
         {
@@ -184,9 +206,9 @@ window.onload = () => {
 };
 
 
-// ======================================
-// GPS SUCCESS
-// ======================================
+// =====================================
+// SUCCESS
+// =====================================
 
 function success(position){
 
@@ -194,77 +216,38 @@ function success(position){
     const lon = position.coords.longitude;
     const acc = position.coords.accuracy;
 
-    document.getElementById("loading").style.display =
-        "none";
+    // =====================================
+    // DEBUG GPS
+    // =====================================
 
-    // ======================================
-    // ODRZUCANIE SŁABYCH POMIARÓW
-    // ======================================
+    document.getElementById("coords").innerHTML = `
 
-    if(acc > 40){
+        LAT: ${lat}<br>
+        LON: ${lon}<br>
+        Accuracy: ${Math.round(acc)}m
 
-        document.getElementById("result").innerHTML = `
+    `;
 
-            <div class="message">
-                Słaby sygnał GPS
-            </div>
+    // =====================================
+    // SŁABY GPS
+    // =====================================
 
-            <div class="accuracy">
-                Accuracy: ${Math.round(acc)}m
-            </div>
+    if(acc > 35){
 
-        `;
+        document.getElementById("status").innerHTML =
+            "Słaby sygnał GPS";
 
         return;
 
     }
 
-    // ======================================
-    // STABILIZACJA GPS
-    // ======================================
+    // =====================================
+    // SZUKANIE NAJBLIŻSZEJ STREFY
+    // =====================================
 
-    history.push({lat, lon});
+    let closestZone = null;
 
-    if(history.length > 5){
-
-        history.shift();
-
-    }
-
-    const avg = history.reduce((a,b)=>{
-
-        return {
-
-            lat: a.lat + b.lat,
-            lon: a.lon + b.lon
-
-        };
-
-    }, {lat:0, lon:0});
-
-    const smoothLat = avg.lat / history.length;
-    const smoothLon = avg.lon / history.length;
-
-    // ======================================
-    // DEBUG
-    // ======================================
-
-    document.getElementById("coords").innerHTML = `
-
-        LAT: ${smoothLat}<br>
-        LON: ${smoothLon}<br>
-
-        <div class="accuracy">
-            Accuracy: ${Math.round(acc)}m
-        </div>
-
-    `;
-
-    // ======================================
-    // SPRAWDZANIE STREF
-    // ======================================
-
-    let foundZone = null;
+    let closestDistance = Infinity;
 
     let debugHTML = "";
 
@@ -272,8 +255,8 @@ function success(position){
 
         const distance = getDistance(
 
-            smoothLat,
-            smoothLon,
+            lat,
+            lon,
 
             zone.lat,
             zone.lon
@@ -290,65 +273,203 @@ function success(position){
             Radius:
             ${zone.radius}m
 
-            <hr style="margin:10px 0;
-            border-color:rgba(255,255,255,0.1);">
+            <hr>
 
         `;
 
+        // tylko strefy w zasięgu
+
         if(distance <= zone.radius){
 
-            foundZone = zone;
+            if(distance < closestDistance){
+
+                closestDistance = distance;
+
+                closestZone = zone;
+
+            }
 
         }
 
     }
 
-    document.getElementById("zoneInfo").innerHTML =
+    document.getElementById("debug").innerHTML =
         debugHTML;
 
-    // ======================================
-    // W STREFIE
-    // ======================================
+    // =====================================
+    // BRAK STREFY
+    // =====================================
 
-    if(foundZone){
+    if(!closestZone){
 
-        document.getElementById("result").innerHTML = `
+        pendingZone = null;
+        pendingCount = 0;
 
-            <img
-                class="logo show"
-                src="${foundZone.img}"
-            >
+        currentZone = null;
 
-            <div class="message">
-                ${foundZone.name}
-            </div>
+        showOutside();
 
-        `;
+        return;
 
     }
 
-    // ======================================
-    // POZA STREFĄ
-    // ======================================
+    // =====================================
+    // PIERWSZA STREFA
+    // =====================================
+
+    if(currentZone === null){
+
+        currentZone = closestZone;
+
+        renderZone(currentZone);
+
+        return;
+
+    }
+
+    // =====================================
+    // TA SAMA STREFA
+    // =====================================
+
+    if(currentZone.name === closestZone.name){
+
+        pendingZone = null;
+        pendingCount = 0;
+
+        renderZone(currentZone);
+
+        return;
+
+    }
+
+    // =====================================
+    // STICKY ZONE
+    // =====================================
+
+    const currentDistance = getDistance(
+
+        lat,
+        lon,
+
+        currentZone.lat,
+        currentZone.lon
+
+    );
+
+    // nowa strefa musi być wyraźnie bliżej
+
+    if(
+        currentDistance - closestDistance
+        < SWITCH_ADVANTAGE
+    ){
+
+        renderZone(currentZone);
+
+        document.getElementById("status").innerHTML =
+
+            "Sticky zone aktywne";
+
+        return;
+
+    }
+
+    // =====================================
+    // CONFIRM SWITCH
+    // =====================================
+
+    if(
+        pendingZone &&
+        pendingZone.name === closestZone.name
+    ){
+
+        pendingCount++;
+
+    }
 
     else{
 
-        document.getElementById("result").innerHTML = `
+        pendingZone = closestZone;
 
-            <div class="message">
-                Poza strefą
-            </div>
+        pendingCount = 1;
 
-        `;
+    }
+
+    document.getElementById("status").innerHTML = `
+
+        Zmiana strefy...
+        (${pendingCount}/${REQUIRED_CONFIRMATIONS})
+
+    `;
+
+    // =====================================
+    // SWITCH
+    // =====================================
+
+    if(
+        pendingCount >= REQUIRED_CONFIRMATIONS
+    ){
+
+        currentZone = closestZone;
+
+        pendingZone = null;
+
+        pendingCount = 0;
+
+        renderZone(currentZone);
 
     }
 
 }
 
 
-// ======================================
-// ODLEGŁOŚĆ W METRACH
-// ======================================
+// =====================================
+// RENDER STREFY
+// =====================================
+
+function renderZone(zone){
+
+    document.getElementById("status").innerHTML =
+        "Strefa aktywna";
+
+    document.getElementById("result").innerHTML = `
+
+        <img
+            class="logo show"
+            src="${zone.img}"
+        >
+
+        <div class="message">
+            ${zone.name}
+        </div>
+
+    `;
+
+}
+
+
+// =====================================
+// POZA STREFĄ
+// =====================================
+
+function showOutside(){
+
+    document.getElementById("status").innerHTML =
+        "Brak aktywnej strefy";
+
+    document.getElementById("result").innerHTML = `
+
+        <div class="message">
+            Poza strefą
+        </div>
+
+    `;
+
+}
+
+
+// =====================================
+// DISTANCE
+// =====================================
 
 function getDistance(lat1, lon1, lat2, lon2){
 
@@ -387,17 +508,21 @@ function getDistance(lat1, lon1, lat2, lon2){
 }
 
 
-// ======================================
-// GPS ERROR
-// ======================================
+// =====================================
+// ERROR
+// =====================================
 
 function error(err){
 
     console.log(err);
 
-    document.getElementById("loading").innerHTML =
+    document.getElementById("result").innerHTML = `
 
-        "Nie udało się pobrać GPS";
+        <div class="message">
+            GPS Error
+        </div>
+
+    `;
 
 }
 
