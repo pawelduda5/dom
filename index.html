@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>GPS Geofencing</title>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Arial,sans-serif;
+}
+
+body{
+    background:#0f172a;
+    color:white;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:20px;
+}
+
+.container{
+    width:100%;
+    max-width:700px;
+    text-align:center;
+}
+
+h1{
+    margin-bottom:30px;
+    font-size:42px;
+}
+
+.card{
+    background:#1e293b;
+    padding:30px;
+    border-radius:25px;
+    box-shadow:0 0 30px rgba(0,0,0,0.3);
+}
+
+.status{
+    margin-top:20px;
+    font-size:22px;
+}
+
+.coords{
+    margin-top:20px;
+    opacity:0.8;
+    line-height:1.8;
+    font-size:15px;
+}
+
+.zoneInfo{
+    margin-top:20px;
+    background:#0f172a;
+    padding:15px;
+    border-radius:15px;
+    text-align:left;
+    font-size:14px;
+    line-height:1.7;
+}
+
+.logo{
+    width:240px;
+    margin-top:30px;
+    border-radius:20px;
+
+    opacity:0;
+    transform:scale(0.8);
+
+    transition:0.7s;
+}
+
+.logo.show{
+    opacity:1;
+    transform:scale(1);
+}
+
+.message{
+    margin-top:25px;
+    font-size:32px;
+}
+
+.accuracy{
+    margin-top:10px;
+    color:#22c55e;
+}
+
+.loading{
+    font-size:20px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>GPS Geofencing</h1>
+
+    <div class="card">
+
+        <div id="loading" class="loading">
+            Łączenie z GPS...
+        </div>
+
+        <div id="result"></div>
+
+        <div id="coords" class="coords"></div>
+
+        <div id="zoneInfo" class="zoneInfo"></div>
+
+    </div>
+
+</div>
+
+<script>
+
+// ======================================
+// STREFY
+// ======================================
+
+const zones = [
+
+    {
+        name: "Pralnia",
+        lat: 50.6309799,
+        lon: 18.8256773,
+        radius: 3, // metry
+        img: "1.jpg"
+    },
+
+    {
+        name: "Helenka",
+        lat: 50.6310118,
+        lon: 18.8256646,
+        radius: 3,
+        img: "2.jpg"
+    }
+
+];
+
+
+// ======================================
+// HISTORIA GPS (stabilizacja)
+// ======================================
+
+let history = [];
+
+
+// ======================================
+// START
+// ======================================
+
+window.onload = () => {
+
+    if(!navigator.geolocation){
+
+        alert("GPS nie jest wspierany");
+
+        return;
+    }
+
+    navigator.geolocation.watchPosition(
+
+        success,
+
+        error,
+
+        {
+            enableHighAccuracy:true,
+            maximumAge:0,
+            timeout:5000
+        }
+
+    );
+
+};
+
+
+// ======================================
+// GPS SUCCESS
+// ======================================
+
+function success(position){
+
+    const lat = position.coords.latitude;
+    const lon = position.coords.longitude;
+    const acc = position.coords.accuracy;
+
+    document.getElementById("loading").style.display =
+        "none";
+
+    // ======================================
+    // ODRZUCANIE SŁABYCH POMIARÓW
+    // ======================================
+
+    if(acc > 40){
+
+        document.getElementById("result").innerHTML = `
+
+            <div class="message">
+                Słaby sygnał GPS
+            </div>
+
+            <div class="accuracy">
+                Accuracy: ${Math.round(acc)}m
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+    // ======================================
+    // STABILIZACJA GPS
+    // ======================================
+
+    history.push({lat, lon});
+
+    if(history.length > 5){
+
+        history.shift();
+
+    }
+
+    const avg = history.reduce((a,b)=>{
+
+        return {
+
+            lat: a.lat + b.lat,
+            lon: a.lon + b.lon
+
+        };
+
+    }, {lat:0, lon:0});
+
+    const smoothLat = avg.lat / history.length;
+    const smoothLon = avg.lon / history.length;
+
+    // ======================================
+    // DEBUG
+    // ======================================
+
+    document.getElementById("coords").innerHTML = `
+
+        LAT: ${smoothLat}<br>
+        LON: ${smoothLon}<br>
+
+        <div class="accuracy">
+            Accuracy: ${Math.round(acc)}m
+        </div>
+
+    `;
+
+    // ======================================
+    // SPRAWDZANIE STREF
+    // ======================================
+
+    let foundZone = null;
+
+    let debugHTML = "";
+
+    for(let zone of zones){
+
+        const distance = getDistance(
+
+            smoothLat,
+            smoothLon,
+
+            zone.lat,
+            zone.lon
+
+        );
+
+        debugHTML += `
+
+            <b>${zone.name}</b><br>
+
+            Distance:
+            ${distance.toFixed(2)}m<br>
+
+            Radius:
+            ${zone.radius}m
+
+            <hr style="margin:10px 0;
+            border-color:rgba(255,255,255,0.1);">
+
+        `;
+
+        if(distance <= zone.radius){
+
+            foundZone = zone;
+
+        }
+
+    }
+
+    document.getElementById("zoneInfo").innerHTML =
+        debugHTML;
+
+    // ======================================
+    // W STREFIE
+    // ======================================
+
+    if(foundZone){
+
+        document.getElementById("result").innerHTML = `
+
+            <img
+                class="logo show"
+                src="${foundZone.img}"
+            >
+
+            <div class="message">
+                ${foundZone.name}
+            </div>
+
+        `;
+
+    }
+
+    // ======================================
+    // POZA STREFĄ
+    // ======================================
+
+    else{
+
+        document.getElementById("result").innerHTML = `
+
+            <div class="message">
+                Poza strefą
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+// ======================================
+// ODLEGŁOŚĆ W METRACH
+// ======================================
+
+function getDistance(lat1, lon1, lat2, lon2){
+
+    const R = 6371000;
+
+    const dLat =
+        (lat2-lat1) * Math.PI/180;
+
+    const dLon =
+        (lon2-lon1) * Math.PI/180;
+
+    const a =
+
+        Math.sin(dLat/2) *
+        Math.sin(dLat/2)
+
+        +
+
+        Math.cos(lat1*Math.PI/180) *
+        Math.cos(lat2*Math.PI/180)
+
+        *
+
+        Math.sin(dLon/2) *
+        Math.sin(dLon/2);
+
+    const c = 2 * Math.atan2(
+
+        Math.sqrt(a),
+        Math.sqrt(1-a)
+
+    );
+
+    return R * c;
+
+}
+
+
+// ======================================
+// GPS ERROR
+// ======================================
+
+function error(err){
+
+    console.log(err);
+
+    document.getElementById("loading").innerHTML =
+
+        "Nie udało się pobrać GPS";
+
+}
+
+</script>
+
+</body>
+</html>
