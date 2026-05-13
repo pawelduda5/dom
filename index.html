@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>GPS PRO Geofencing</title>
+<title>GPS PRO ULTRA</title>
 
 <style>
 
@@ -32,15 +32,15 @@ body{
 
 .card{
     background:#1e293b;
-    border-radius:25px;
     padding:30px;
+    border-radius:25px;
     box-shadow:0 0 30px rgba(0,0,0,0.3);
     text-align:center;
 }
 
 h1{
-    margin-bottom:25px;
     font-size:42px;
+    margin-bottom:25px;
 }
 
 .logo{
@@ -51,7 +51,7 @@ h1{
     opacity:0;
     transform:scale(0.9);
 
-    transition:0.6s;
+    transition:0.5s;
 }
 
 .logo.show{
@@ -66,7 +66,7 @@ h1{
 
 .coords{
     margin-top:25px;
-    opacity:0.8;
+    opacity:0.85;
     line-height:1.8;
     font-size:15px;
 }
@@ -74,13 +74,19 @@ h1{
 .debug{
     margin-top:25px;
     background:#0f172a;
-    border-radius:15px;
     padding:20px;
+    border-radius:15px;
     text-align:left;
+    max-height:320px;
+    overflow:auto;
     font-size:14px;
     line-height:1.7;
-    max-height:300px;
-    overflow:auto;
+}
+
+.status{
+    margin-top:18px;
+    color:#22c55e;
+    font-size:18px;
 }
 
 hr{
@@ -88,10 +94,8 @@ hr{
     border-color:rgba(255,255,255,0.08);
 }
 
-.status{
-    margin-top:15px;
+.active{
     color:#22c55e;
-    font-size:18px;
 }
 
 </style>
@@ -103,7 +107,7 @@ hr{
 
     <div class="card">
 
-        <h1>GPS PRO</h1>
+        <h1>GPS PRO ULTRA</h1>
 
         <div id="result">
 
@@ -135,16 +139,16 @@ const zones = [
         name: "Pralnia",
         lat: 50.6309799,
         lon: 18.8256773,
-        radius: 10,
-        img: "1.jpg"
+        radius: 3,
+        img: "1.jpeg"
     },
 
     {
         name: "Helenka",
         lat: 50.6310118,
         lon: 18.8256646,
-        radius: 10,
-        img: "2.jpg"
+        radius: 3,
+        img: "2.jpeg"
     }
 
 ];
@@ -154,15 +158,14 @@ const zones = [
 // USTAWIENIA PRO
 // =====================================
 
-// ile metrów bliżej musi być nowa strefa
-// żeby przełączyć
+// nowa strefa musi być bliżej o:
 
-const SWITCH_ADVANTAGE = 4;
+const SWITCH_ADVANTAGE = 1.5;
 
-// ile kolejnych odczytów potrzeba
-// do zmiany strefy
+// ile kolejnych odczytów
+// musi potwierdzić zmianę
 
-const REQUIRED_CONFIRMATIONS = 3;
+const REQUIRED_CONFIRMATIONS = 5;
 
 
 // =====================================
@@ -177,7 +180,7 @@ let pendingCount = 0;
 
 
 // =====================================
-// START GPS
+// START
 // =====================================
 
 window.onload = () => {
@@ -193,11 +196,12 @@ window.onload = () => {
     navigator.geolocation.watchPosition(
 
         success,
+
         error,
 
         {
             enableHighAccuracy:true,
-            maximumAge:0,
+            maximumAge:1000,
             timeout:5000
         }
 
@@ -229,13 +233,13 @@ function success(position){
     `;
 
     // =====================================
-    // SŁABY GPS
+    // BLOKADA SŁABEGO GPS
     // =====================================
 
-    if(acc > 35){
+    if(acc > 8){
 
         document.getElementById("status").innerHTML =
-            "Słaby sygnał GPS";
+            "GPS za mało dokładny";
 
         return;
 
@@ -263,23 +267,39 @@ function success(position){
 
         );
 
+        const inside =
+            distance <= zone.radius;
+
         debugHTML += `
 
-            <b>${zone.name}</b><br>
+            <b class="${
+                inside ? 'active' : ''
+            }">
+
+                ${zone.name}
+
+            </b><br>
 
             Distance:
             ${distance.toFixed(2)}m<br>
 
             Radius:
-            ${zone.radius}m
+            ${zone.radius}m<br>
+
+            Status:
+            ${
+                inside
+                ? 'W STREFIE'
+                : 'POZA'
+            }
 
             <hr>
 
         `;
 
-        // tylko strefy w zasięgu
+        // tylko strefy w radiusie
 
-        if(distance <= zone.radius){
+        if(inside){
 
             if(distance < closestDistance){
 
@@ -303,6 +323,7 @@ function success(position){
     if(!closestZone){
 
         pendingZone = null;
+
         pendingCount = 0;
 
         currentZone = null;
@@ -334,6 +355,7 @@ function success(position){
     if(currentZone.name === closestZone.name){
 
         pendingZone = null;
+
         pendingCount = 0;
 
         renderZone(currentZone);
@@ -356,30 +378,35 @@ function success(position){
 
     );
 
-    // nowa strefa musi być wyraźnie bliżej
+    // nowa strefa musi być
+    // WYRAŹNIE bliżej
 
     if(
+
         currentDistance - closestDistance
         < SWITCH_ADVANTAGE
+
     ){
 
         renderZone(currentZone);
 
         document.getElementById("status").innerHTML =
 
-            "Sticky zone aktywne";
+            "Sticky zone";
 
         return;
 
     }
 
     // =====================================
-    // CONFIRM SWITCH
+    // POTWIERDZENIA
     // =====================================
 
     if(
+
         pendingZone &&
         pendingZone.name === closestZone.name
+
     ){
 
         pendingCount++;
@@ -397,6 +424,7 @@ function success(position){
     document.getElementById("status").innerHTML = `
 
         Zmiana strefy...
+
         (${pendingCount}/${REQUIRED_CONFIRMATIONS})
 
     `;
@@ -406,7 +434,9 @@ function success(position){
     // =====================================
 
     if(
+
         pendingCount >= REQUIRED_CONFIRMATIONS
+
     ){
 
         currentZone = closestZone;
@@ -429,6 +459,7 @@ function success(position){
 function renderZone(zone){
 
     document.getElementById("status").innerHTML =
+
         "Strefa aktywna";
 
     document.getElementById("result").innerHTML = `
@@ -454,12 +485,13 @@ function renderZone(zone){
 function showOutside(){
 
     document.getElementById("status").innerHTML =
-        "Brak aktywnej strefy";
+
+        "Poza strefą";
 
     document.getElementById("result").innerHTML = `
 
         <div class="message">
-            Poza strefą
+            Brak aktywnej strefy
         </div>
 
     `;
